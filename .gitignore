@@ -1,0 +1,9 @@
+nbproject/
+data/
+
+*.o
+*.pdf
+*.gz
+*.zip
+
+flow

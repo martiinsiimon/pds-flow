@@ -1,0 +1,19 @@
+# Short installation manual #
+
+
+## Dependecies ##
+ * no special dependencies needed
+
+## How to build? ##
+Execute command
+    $ make
+to build the source code as well as the documentation. Alternatively you can execute only
+    $ make-src
+resp.
+    $ make-doc
+for compiling only the source code, resp. the documentation
+
+## How to run? ##
+Execute command
+    $ make run
+and see the output

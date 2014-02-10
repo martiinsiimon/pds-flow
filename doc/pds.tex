@@ -1,0 +1,163 @@
+\documentclass[11pt,a4paper]{article}
+\input{config}
+
+\begin{document}
+\titlepageandcontents
+
+%---------------------------------------------------------------------------
+\section{Zadání}
+Cílem bylo implementovat globální osvětlování pomocí radiosity prostřednictvím platformy OpenCL.
+
+Platforma OpenCL umožňuje akcelerovat obecné výpočty prostřednictvím paralelizace a využítí výpočetní síly grafického procesoru. Právě tímto směrem je zaměřen i tento projekt.
+
+Důraz je kladen především na vhodnou paralelizaci problému (neboť to je hlavní výhoda možnosti využití grafického akcelerátoru) a tím i maximální zrychlení celého procesu osvětlování oproti seriové implementaci na procesoru.
+
+Kvalita zobrazení a podoba výsledné scény není hlavní prioritou projektu. Stejně tak nebylo cílem vytvořit optimální algoritmus pro výpočet radiosity či dílčích prerekvizit, jako je dělení plošek scény či návrh scény samotné.
+
+Součástí řešení je i implementace řešená stejným způsobem, pouze bez využití OpenCL, tedy sériově na procesoru. Tato implementace je využita k porovnání kvality výsledků i průběhu, ale především pro porovnání rychlosti a výsledného zrychlení.
+
+%---------------------------------------------------------------------------
+\section{Použité technologie}
+Technologie použité pro projekt samotný jsou zobrazeny v následujícím přehledu. Všechny knihovny je třeba mít instalovány tak, aby bylo možno je volat standardním způsobem.
+\begin{itemize}
+  \item \textbf{OpenCL}. Žádné požadovky na minimální verzi, nutný je pouze podporovaný hardware a  odpovídající implementace. Pro překlad projektu je potřeba mít i hlavičkové soubory.
+  \item \textbf{OpenGL}. Vykreslování probíhá pomocí standardního zobrazovacího průběhu OpenGL. Pro překlad projektu je potřeba mít i hlavičkové soubory.
+  \item \textbf{Knihovna SDL}. Práce s okny je zajištěna pomocí knihovny SDL. Tato knihovna zastřešuje práci s okny v systému napříč různými platformami a hardwarem. Pro překlad projektu je potřeba mít i hlavičkové soubory.
+  \item \textbf{Knihovna PGR}. Tato knihovna zapouzdřuje práci s okny. Pochází z cvičení předmětu PGR 2013 na FIT VUT v Brně. Je přejata beze změny. K projektu je přiložena.
+  \item \textbf{Knihovna GLEW}. Potřebná pro knihovnu PGR. Pro překlad projektu je potřeba mít i hlavičkové soubory.
+  \item \textbf{Knihovna GLee}. Potřebná pro knihovnu PGR. K projektu je přiložena.
+\end{itemize}
+
+Pro překlad je potřeba standardních nástrojů \textbf{make}, \textbf{g++} pro C++ soubory a \textbf{gcc} pro C soubory. Volba překladače je ovšem možná pozměnit v přiloženém \texttt{Makefile}.
+
+
+%---------------------------------------------------------------------------
+\section{Nejdůležitější dosažené výsledky}
+Cílem projektu bylo dosáhnout akcelerace výpočtu radiosity pomocí OpenCL. Tohoto zrychlení jsme dosáhli s tím, že zrychlení bylo větší pro větší počet plošek ve scéně. Podbrobnější časy experimentů jsou k vidění v tabulce níže.
+
+\begin{center}
+    \begin{tabular}{| c | c | c | c | c | c |}
+      \hline
+      Architecture & N & Patches & Cycles & Time & Acceleration \\
+      \hline
+      CPU & 10 & 8464 & 768 & 137.622s & -- \\
+      GPU & 64 & 8464 & 126 & 112.874s & 1,21925x \\
+      \hline
+      CPU & 10 & 68736 & 3062 & 3024.18s & -- \\
+      GPU & 64 & 68736 & 142 & 766.756s & 3,94778x \\
+      \hline
+      CPU & 10 & 902144 & 2928 & 34748.9s & -- \\
+      GPU & 64 & 902144 & N/A & N/A & N/A \\
+      \hline
+    \end{tabular}
+\end{center}
+
+%---------------------------------------------------------------------------
+\section{Použití programu}
+
+\subsection{Překlad programu}
+V kořenovém adresáři spusťte příkaz
+\begin{itemize}
+  \item[] \texttt{\$ make}
+\end{itemize}
+Provede se překlad programové části.
+
+
+\subsection{Spuštění programu}
+V kořenovém adrešáři použijte příkaz
+\begin{itemize}
+  \item[] \texttt{\$ make run-cpu}
+\end{itemize}
+nebo
+\begin{itemize}
+  \item[] \texttt{\$ make run-gpu}
+\end{itemize}
+pro spuštění výpočtu radiosity na cpu, resp. na gpu.
+
+
+\subsection{Ovládání programu}
+Po spuštění programu je zobrazena scéna. Scénou lze rotovat pomocí levého tlačítka myši a přibližovat ji pomocí pravého tlačítka myši.
+
+Samotný výpočet radiosity probíhá po stisknutí klávesy \texttt{t}, a to podle parametru spuštění na procesoru, nebo grafické kartě.
+
+Program lze ukončit pomocí standardních akcí (uzavření okna, apod.) nebo stisknutím klávesy \texttt{Escape}, \texttt{q} či \texttt{x}.
+
+
+%---------------------------------------------------------------------------
+\section{Zvláštní použité znalosti}
+Bylo třeba řešit problémy spojené s praktickým řešením zadané úlohy. Tím je myšleno několik výrazných odchýlení od teoretických návrhů.
+
+Z těchto odchylek je třeba zmínit především výpočet \textbf{konfiguračních faktorů}. Často se setkáváme s nápadem si konfigurační faktory předpočítat předem a ušetřit si tak spoustu výpočetního výkonu (neboť drtivá plošek bude energii přijímat/odesílat více než jednou). Praktický problém s tím spojený je, že není možné tyto faktory efektivně uložit do paměti. Konfigurační faktor je určen pro každou dvojici plošek ve scéně, kdy je možné využít symetrie, že $F_{ij} = F_{ji}$, kde $F_{ij}$ je konfigurační faktor mezi ploškami s indexem $i$ a $j$, takže není třeba si pamatovat $N^N$ faktorů, kde $N$ je počet plošek ve scéně, ale "pouze" $N^N/2$.
+
+I tak ale při počtu jednoho milionu plošek ($1\,000\,000$) a potřebě uložit konfigurační faktor $F$ alespoň v přesnosti \texttt{float} (což je velikost přibližně 4B) jde o poměrně velké místo paměti.
+
+Tento problém jsme nakonec řešili postupných opakovaným výpočtem potřebných konfiguračních faktorů až ve chvíli, kdy jich bylo zapotřebí.
+
+%---------------------------------------------------------------------------
+\section{Rozdělení práce v týmu}
+
+\begin{itemize}
+\item Martin Šimon: Celkový návrh, radiosita na OpenCL, optimalizace
+\item Lukáš Brzobohatý: Radiosita na CPU, výpočet konfiguračních faktorů
+\end{itemize}
+
+Části, které nejsou vypsány v odrážkách výše, jsou společným dílem včech členů týmu.
+
+%---------------------------------------------------------------------------
+\section{Co bylo nejpracnější}
+Problémy s různorodostí implementací OpenCL provázely celé řešení projektu. To, co na jednom hardware s jednou implementací OpenCL fungovalo bezvadně, vyžadovalo netriviální zásahy na implementaci jiné. Takových problémů jsme řešili nespočet.
+
+Dalčím problémem bylo vyrovnat se s nepřesností datového typu \texttt{float}. Především šlo o problém promítání scény s unikátními barvami do polokrychle, kde tyto nepřesnosti znamenaly nefungující převod z barvy na index plošky. Řešení však bylo nasnadě, neboť místo zápisu barev v rozsahu $<0.0,1.0>$ pro každou barevnou složku ve smyslu RGB je možné použít rozsah celých čísel $<0,256>$.
+
+Dalším problémem s přesností čísel v datovém typu \texttt{float} však nastal u nižší přesnosti na GPU proti \texttt{float} na CPU. Tento problém se nám podařilo redukovat, nikoli však úplně odstranit, což má za následek zejména sníženou kvalitu při výpočtu radiosity pomocí OpenCL.
+
+%---------------------------------------------------------------------------
+\section{Zkušenosti získané řešením projektu}
+Projekt nám přinesl praktické zkušenosti z~řešení problematiky obecných výpočtů na grafické kartě za pomoci OpenCL. Nedílnou součástí bylo hluboké pochopení algoritmu radiosity a obecné problematiky globálního osvětlování. Prohloubení znalostí C/C++ provází snad každý projekt, kde jsou tyto technologie použity.
+
+%---------------------------------------------------------------------------
+\section{Autoevaluace}
+\paragraph{Technický návrh (90\%):} 
+Vhodná dekompozice problému má za pozitivní důsledek především fakt, že nikdy v průběhu řešení projektu nebyl výrazný problém přidávat různé části či přidávat funkcionalitu. Projekt samotný je snadno rozšiřitelný a koncepci vnímáme jako povedenou.
+
+\paragraph{Programování (80\%):}
+Triviální znovupoužitelnost je ztížena neobjektivitou návrhu a práce s~OpenCL. Program není plně odladěn, ostatně o~to nebyla ani přílišná snaha. Cílem bylo akcelerovat výpočty, což jsme také v~řešení vhodně demonstrovali. 
+
+\paragraph{Vzhled vytvořeného řešení (75\%):}
+Hlavním cílem projeku bylo akcelerovat výpočet radiosity pomocí technologie OpenCL, proto nebylo ani cílem poskytovat bezchybnou radiositu či implementovat nějaké optimalizace za účelem zlepšení kvality výsledného obrazu. Nicméně, radiosita byla implementována a sama o sobě dává výsledky obstojné.
+
+\paragraph{Využití zdrojů (80\%):}
+Z literatury jsme čerpali vše potřebné, z praktické inspirace je třeba zmínit především \cite{sabata}. Projekt využívá a je postaven na zdrojových kódech používaných na cvičení z předmětu PGR 2013/2014.
+
+\paragraph{Hospodaření s časem (70\%):}
+S řešením projektu jsme začali vcelku brzo, nicméně dokončení projektu bylo směřování až k termínu odevzdání. Nakonec přišel ještě vhod, když byl termín odevzdání odložen. Přestože jsme termín dodrželi, vnímáme hospodaření s časem za jednu z našich slabých stránek při řešení tohoto projektu.
+
+\paragraph{Spolupráce v týmu (70\%):}
+Práce byla rozložena rovnoměrně, pravidelně probíhaly osobní konzultace a prostřednictvím verzovacího systému měli všichni členové týmu neustále plný přehled o postupu řešení.
+
+\paragraph{Celkový dojem (85\%):}
+Výpočet globálního osvětlení pomocí radiosity dostál očekávání do něj vloženého. Ukázal se jako složitý, komplexní, ale především zajímavý a s poskytnutím pěkného vizuálního výstupu. Akcelerace pomocí OpenCL pak umožnila realizovat se na poli optimalizací a paralelismu.
+
+%---------------------------------------------------------------------------
+\section{Doporučení pro budoucí zadávání projektů}
+Zadání projektu bylo kompletní, projekt však odovídá svému bodovému ohodnocení, neboť sestával z komplexního řešení problému se spoustou podproblémů. Negativem, které vyvažuje komplexnost zadání, je poněkud vyšší časová náročnost. Celkově však zadání shledáváme zajímavým.
+
+%---------------------------------------------------------------------------
+
+\def\refname{\section{Použité zdroje}}
+\begin{thebibliography}{9}
+  \bibitem{radiosity_pdf1} GREENBERG, Donald P., Michael F. COHEN a Kenneth E. TORRANCE. Radiosity: A method for computing global illumination. \emph{The Visual Computer}. 1986, vol. 2, issue 5, s. 291-297. DOI: 10.1007/BF02020429.
+  \bibitem{opencl}\emph{OpenCL Reference Pages}. [online]. [cit. 2013-12-11]. Dostupné z:\\
+    \url{http://www.khronos.org/registry/cl/sdk/1.2/docs/man/xhtml/}
+  \bibitem{opengl}\emph{OpenGL 4 Reference Pages}. [online]. [cit. 2013-12-11]. Dostupné z:\\
+    \url{http://www.opengl.org/sdk/docs/man/}
+  
+  \bibitem{sabata} ŠABATA, David. \emph{Radiosita na GPU}. Brno, 2011. Bakalářská práce. Vysoké Učení Technické v Brně, Fakulta Informačních Technologií. 
+  
+  \bibitem{moderni_pocitacova_grafika} ŽÁRA, Jiří, Bedřich BENEŠ a Petr FELKEL. \emph{Moderní počítačová grafika}. Vyd. 1. Praha: Computer Press, 1998, xvi, 448 s. ISBN 80-722-6049-9.
+  
+\end{thebibliography}
+
+
+\end{document}
+% vim:set ft=tex expandtab enc=utf8:
