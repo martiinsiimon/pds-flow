@@ -56,17 +56,27 @@ int parseAggKey(char *key, int * mask)
     char * p = strchr(key, '/');
     if (p != NULL)
     {
-        //printf("%d", p - key); //FIXME compare with substring, check if position is not behind the end and convert the rest to integer (mask))
-        if (strcmp(key, "srcip/mask") == 0)
+        char * tmpKey = malloc((p - key + 1) * sizeof (char));
+        strncpy(tmpKey, key, p - key);
+        tmpKey[p - key] = '\0';
+
+        char *tmpMask = malloc((strlen(key) - (p - key)) * sizeof (char));
+        strncpy(tmpMask, key + (p - key) + 1, (strlen(key) - (p - key) - 1));
+        tmpMask[strlen(key) - (p - key) - 1] = '\0';
+        *mask = atoi(tmpMask);
+        free(tmpMask);
+
+        if (strcmp(tmpKey, "srcip") == 0)
         {
-            *mask = 10; //FIXME
+            free(tmpKey);
             return EN_AGG_SRCIP;
         }
-        else if (strcmp(key, "dstip/mask") == 0)
+        else if (strcmp(tmpKey, "dstip") == 0)
         {
-            *mask = 10; //FIXME
+            free(tmpKey);
             return EN_AGG_DSTIP;
         }
+        free(tmpKey);
     }
     else if (strcmp(key, "srcport") == 0)
         return EN_AGG_SRCPORT;
@@ -76,18 +86,32 @@ int parseAggKey(char *key, int * mask)
         return EN_ERROR;
 }
 
-void addRecord(struct flow *fl, int agsign, int mask)
+void addRecordIP(struct flow *fl, int aggkey, int mask)
 {
     //FIXME
+    /* Check if already exists an record   */
+    //if so, then add a bytes and packets to the record
+    //otherwise, add new record with initial values
+
+
     return;
 }
+
+void addRecordPort(struct flow *fl, int aggkey)
+{
+    //FIXME
+    /* Try to add a record to data structure */
+    return;
+}
+
+//int hash()
 
 int main(int argc, char *argv[])
 {
     char *directory;
     int sortkey;
     int aggkey;
-    int mask;
+    int mask = 0;
 
     if (argc == 2 && (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0))
     {
@@ -101,7 +125,7 @@ int main(int argc, char *argv[])
         directory = argv[2]; /* Will be checked by openning */
 
         /* Check aggkey */
-        if ((sortkey = parseAggKey(argv[4], &mask)) == EN_ERROR)
+        if ((aggkey = parseAggKey(argv[4], &mask)) == EN_ERROR)
         {
             printError("Invalid aggregation key!");
             printHelp(argv[0]);
@@ -124,11 +148,28 @@ int main(int argc, char *argv[])
         return (EXIT_FAILURE);
     }
 
+    // DBG ////////////////////////////////////////////////
+    unsigned int a = 0;
+    // ENDDBG /////////////////////////////////////////////
 
     DIR *dir;
     struct dirent *ent;
     if ((dir = opendir(directory)) != NULL)
     {
+        //FIXME: every file should be in separated thread with separated data structure
+
+        if (aggkey == EN_AGG_SRCIP || aggkey == EN_AGG_DSTIP)
+        {
+            //TODO initialize hash function for IP based data structure
+            //TODO the size should be based on the mask
+        }
+        else
+        {
+            //TODO initialize hash function for port based data structure
+            //TODO the size should be based on the port range
+        }
+
+
         while ((ent = readdir(dir)) != NULL)
         {
             /* Skip special unix files . and .. */
@@ -142,20 +183,38 @@ int main(int argc, char *argv[])
             strcat(file, ent->d_name);
 
             // DBG //////////////////////////////////////////////
-            //fprintf(stdout, "%s\n", file);
+            fprintf(stdout, "%s: ", file);
             // ENDDBG ///////////////////////////////////////////
 
             /* Start to parse file by chosen aggregation */
             FILE *fp = fopen(file, "rb");
             struct flow fl;
             size_t n = 0;
-            while ((n = fread(&fl, sizeof (struct flow), 1, fp)) != 0)
+
+            if (aggkey == EN_AGG_SRCIP || aggkey == EN_AGG_DSTIP)
             {
-                /*TODO*/
-                //print_flow(&fl);
-                addRecord(&fl, aggkey, mask);
-                //break;
+                while ((n = fread(&fl, sizeof (struct flow), 1, fp)) != 0)
+                {
+                    // DBG ////////////////////////////////
+                    a++;
+                    // ENDDBG /////////////////////////////
+                    addRecordIP(&fl, aggkey, mask);
+                }
             }
+            else
+            {
+                while ((n = fread(&fl, sizeof (struct flow), 1, fp)) != 0)
+                {
+                    // DBG ////////////////////////////////
+                    a++;
+                    // ENDDBG /////////////////////////////
+                    addRecordPort(&fl, aggkey);
+                }
+            }
+
+            // DBG ////////////////////////////////
+            fprintf(stdout, "%d\n", a);
+            // ENDDBG /////////////////////////////
 
             /* Close the file */
             fclose(fp);

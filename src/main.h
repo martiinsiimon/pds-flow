@@ -50,6 +50,7 @@ void printError(char *msg);
 
 int parseSortKey(char *key);
 int parseAggKey(char *key, int * mask);
-void addRecord(struct flow *fl, int agsign, int mask);
+void addRecordIP(struct flow *fl, int aggkey, int mask);
+void addRecordPort(struct flow *fl, int aggkey);
 
 #endif /* MAIN_H */
