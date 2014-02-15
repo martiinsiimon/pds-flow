@@ -1,21 +1,24 @@
 FILES=main.c
 OBJ=${FILES:.c=.o}
-FLAGS=-Wall -g -O0 -pipe -pedantic
+FLAGS=-Wall -W -Werror -ansi -Wshadow -g -ggdb -O0 -pipe -pedantic
 
-EXE=flow
+BIN=../bin/
+EXE=$(BIN)flow
 
 CC=gcc
 RM=rm -rf
+MKDIR=mkdir -p
 
 .PHONY: all clean run exe
 
 all: $(OBJ) exe
+	$(MKDIR) ../bin
 	$(CC) $(FLAGS) $(OBJ) -o $(EXE)
 
 exe: $(EXE)
 
 run:
-	./$(EXE)
+	./$(EXE) -h
 
 clean:
 	$(RM) *.o

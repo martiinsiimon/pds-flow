@@ -7,11 +7,11 @@ BIN=bin/
 
 ARCHIVE=xsimon14.zip
 PDFFILE=$(DOC)pds-flow.pdf
-EXE=flow
+EXE=$(BIN)flow
 
 RM=rm -rf
 AR=zip
-HELP=-h
+OPT=-h
 
 
 .PHONY: all src doc
@@ -28,7 +28,7 @@ clean: clean-src clean-doc
 	$(RM) $(ARCHIVE)
 
 run:
-	cd $(BIN) && ./$(EXE) $(HELP)
+	./$(EXE) $(OPT)
 
 clean-src:
 	make -C $(SRC) clean

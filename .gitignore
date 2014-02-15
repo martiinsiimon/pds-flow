@@ -1,9 +1,14 @@
 nbproject/
 data/
+bin/
 
 *.o
 *.pdf
 *.gz
 *.zip
+
+*.aux
+*.log
+*.out
 
 flow
