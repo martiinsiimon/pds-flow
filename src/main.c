@@ -86,7 +86,7 @@ int parseAggKey(char *key, int * mask)
         return EN_ERROR;
 }
 
-void addRecordIP(struct flow *fl, int aggkey, int mask)
+void addRecordIP(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable)
 {
     //FIXME
     /* Check if already exists an record   */
@@ -97,14 +97,95 @@ void addRecordIP(struct flow *fl, int aggkey, int mask)
     return;
 }
 
-void addRecordPort(struct flow *fl, int aggkey)
+void addRecordPort(struct flow *fl, int aggkey, struct t_hashTable *hashTable)
 {
-    //FIXME
     /* Try to add a record to data structure */
+    uint16_t value;
+    if (aggkey == EN_AGG_SRCPORT)
+        value = fl->src_port;
+    else if (aggkey == EN_AGG_DSTPORT)
+        value = fl->dst_port;
+    else
+        return;
+
+    /* Get the hash */
+    unsigned int hash = hashFunction(value, hashTable->size);
+
+    /* Add if there is a record */
+    if (hashTable->data[hash].used)
+    {
+        if (hashTable->data[hash].port == value)
+        {
+            hashTable->data[hash].bytes += fl->bytes;
+            hashTable->data[hash].packets += fl->packets;
+        }
+        else
+        {
+            unsigned int newHash = (hash + EN_HASH_STEP) % hashTable->size;
+
+            while (hashTable->data[newHash].used && hashTable->data[newHash].port != value)
+            {
+                newHash = (newHash + EN_HASH_STEP) % hashTable->size;
+                printf("loop!");
+            }
+            printf("loop!\n");
+            if (!hashTable->data[newHash].used)
+            {
+                hashTable->data[newHash].port = value;
+                hashTable->data[newHash].bytes = fl->bytes;
+                hashTable->data[newHash].packets = fl->packets;
+                hashTable->data[newHash].used = 1;
+                hashTable->count++;
+            }
+            else
+            {
+                hashTable->data[newHash].bytes += fl->bytes;
+                hashTable->data[newHash].packets += fl->packets;
+            }
+        }
+    }
+    /* Initialize if there is not a record yet */
+    else
+    {
+        hashTable->data[hash].port = value;
+        hashTable->data[hash].bytes = fl->bytes;
+        hashTable->data[hash].packets = fl->packets;
+        hashTable->data[hash].used = 1;
+        hashTable->count++;
+    }
+
+    printf("size: %d/%d\n", hashTable->count, hashTable->size);
+    if (hashTable->count > 0.8 * hashTable->size)
+    {
+        printf("Hash table out of resources! size: %d/%d\n", hashTable->count, hashTable->size);
+        //TODO double the hash table and recompute hashes!
+        exit(1);
+    }
     return;
 }
 
-//int hash()
+inline unsigned int hashFunction(const unsigned int input, unsigned tableSize)
+{
+    return ((input * 2654435761) % tableSize);
+}
+
+void initHashTable(struct t_hashTable *hashTable, unsigned int tableSize)
+{
+    hashTable->data = malloc(sizeof (struct t_dataStruct) * tableSize);
+    hashTable->size = tableSize;
+    hashTable->count = 0;
+
+    int i;
+    for (i = 0; i < tableSize; i++)
+    {
+        hashTable->data[i].used = 0;
+    }
+}
+
+void finishHashTable(struct t_hashTable *hashTable)
+{
+    free(hashTable->data);
+}
 
 int main(int argc, char *argv[])
 {
@@ -112,6 +193,7 @@ int main(int argc, char *argv[])
     int sortkey;
     int aggkey;
     int mask = 0;
+    struct t_hashTable hashTable;
 
     if (argc == 2 && (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0))
     {
@@ -160,13 +242,13 @@ int main(int argc, char *argv[])
 
         if (aggkey == EN_AGG_SRCIP || aggkey == EN_AGG_DSTIP)
         {
-            //TODO initialize hash function for IP based data structure
-            //TODO the size should be based on the mask
+            /* Initialize hash function for IP based data structure */
+            initHashTable(&hashTable, EN_HASH_INIT_IP);
         }
         else
         {
-            //TODO initialize hash function for port based data structure
-            //TODO the size should be based on the port range
+            /* Initialize hash function for port based data structure */
+            initHashTable(&hashTable, EN_HASH_INIT_PORT);
         }
 
 
@@ -198,7 +280,7 @@ int main(int argc, char *argv[])
                     // DBG ////////////////////////////////
                     a++;
                     // ENDDBG /////////////////////////////
-                    addRecordIP(&fl, aggkey, mask);
+                    addRecordIP(&fl, aggkey, mask, &hashTable);
                 }
             }
             else
@@ -208,7 +290,7 @@ int main(int argc, char *argv[])
                     // DBG ////////////////////////////////
                     a++;
                     // ENDDBG /////////////////////////////
-                    addRecordPort(&fl, aggkey);
+                    addRecordPort(&fl, aggkey, &hashTable);
                 }
             }
 
@@ -248,6 +330,6 @@ int main(int argc, char *argv[])
         }
         fclose(fp);
      */
-
+    finishHashTable(&hashTable);
     return (EXIT_SUCCESS);
 }

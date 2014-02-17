@@ -17,7 +17,7 @@ struct flow
     uint64_t bytes;
 };
 
-struct data_struct
+struct t_dataStruct
 {
     union
     {
@@ -26,6 +26,15 @@ struct data_struct
     };
     uint64_t packets;
     uint64_t bytes;
+    char used;
+};
+
+struct t_hashTable
+{
+    int size;
+    int count;
+    //int half;
+    struct t_dataStruct * data;
 };
 
 /* Sort key values */
@@ -42,6 +51,9 @@ struct data_struct
 
 /* Other values */
 #define EN_ERROR -1
+#define EN_HASH_INIT_IP 2048
+#define EN_HASH_INIT_PORT 2048
+#define EN_HASH_STEP 13
 
 /* Prototypes */
 void print_flow(struct flow *fl);
@@ -50,7 +62,10 @@ void printError(char *msg);
 
 int parseSortKey(char *key);
 int parseAggKey(char *key, int * mask);
-void addRecordIP(struct flow *fl, int aggkey, int mask);
-void addRecordPort(struct flow *fl, int aggkey);
+void addRecordIP(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable);
+void addRecordPort(struct flow *fl, int aggkey, struct t_hashTable *hashTable);
 
+inline unsigned int hashFunction(const unsigned int input, unsigned tableSize);
+void initHashTable(struct t_hashTable *hashTable, unsigned int tableSize);
+void finishHashTable(struct t_hashTable *hashTable);
 #endif /* MAIN_H */
