@@ -1,10 +1,15 @@
+/*
+ * File:    main.c
+ * Author:  Martin Simon <martiinsiimon@gmail.com>
+ * License: See the LICENSE file
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
-#include <sys/types.h>
-#include <netinet/ip.h>
-#include <netinet/ip6.h>
+//#include <sys/types.h>
+
 #include <string.h>
 #include <dirent.h>
 #include <arpa/inet.h>
@@ -38,21 +43,17 @@ void printHelp(char *name)
     fprintf(stdout, "    directory    directory with flow data files\n");
     fprintf(stdout, "    aggregation  aggregation key [srcip, dstip, srcip4/mask, dstip4/mask,\n"
             "                 srcip6/mask, dstip6/mask, srcport, dstport]\n");
-    fprintf(stdout, "    sort         sort key [srcport, dstport, packets, bytes]\n\n");
+    fprintf(stdout, "    sort         sort key [packets, bytes]\n\n");
 }
 
-void printError(char *msg)
+inline void printError(char *msg)
 {
     fprintf(stderr, "ERR: %s\n", msg);
 }
 
 int parseSortKey(char *key)
 {
-    if (strcmp(key, "srcport") == 0)
-        return EN_SORT_SRCPORT;
-    else if (strcmp(key, "dstport") == 0)
-        return EN_SORT_DSTPORT;
-    else if (strcmp(key, "packets") == 0)
+    if (strcmp(key, "packets") == 0)
         return EN_SORT_PACKETS;
     else if (strcmp(key, "bytes") == 0)
         return EN_SORT_BYTES;
@@ -80,17 +81,16 @@ int parseAggKey(char *key, int * mask)
 
         int result;
 
-        if (strcmp(tmpKey, "srcip4") == 0 && *mask <= 32 && *mask >= 0)
+        if (strcmp(tmpKey, "srcip4") == 0 && *mask <= 32 && *mask > 0)
             result = EN_AGG_SRCIP4;
-        else if (strcmp(tmpKey, "dstip4") == 0 && *mask <= 32 && *mask >= 0)
+        else if (strcmp(tmpKey, "dstip4") == 0 && *mask <= 32 && *mask > 0)
             result = EN_AGG_DSTIP4;
-        else if (strcmp(tmpKey, "srcip6") == 0 && *mask <= 128 && *mask >= 0)
+        else if (strcmp(tmpKey, "srcip6") == 0 && *mask <= 128 && *mask > 0)
             result = EN_AGG_SRCIP6;
-        else if (strcmp(tmpKey, "dstip6") == 0 && *mask <= 128 && *mask >= 0)
+        else if (strcmp(tmpKey, "dstip6") == 0 && *mask <= 128 && *mask > 0)
             result = EN_AGG_DSTIP6;
         else
             result = EN_ERROR;
-
 
         free(tmpKey);
         return result;
@@ -107,14 +107,8 @@ int parseAggKey(char *key, int * mask)
         return EN_ERROR;
 }
 
-void addRecordIP(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable)
+void addRecordIP(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable4, struct t_hashTable *hashTable6)
 {
-    //FIXME
-    /* Check if already exists an record   */
-    //if so, then add a bytes and packets to the record
-    //otherwise, add new record with initial values
-
-
     if (aggkey == EN_AGG_SRCIP4 || aggkey == EN_AGG_DSTIP4)
     {
         /* Skip unwanted IP flows (by protocol version) */
@@ -123,21 +117,14 @@ void addRecordIP(struct flow *fl, int aggkey, int mask, struct t_hashTable *hash
             return;
         }
 
-        /* Get correct address */
-        uint32_t ipaddr;
-        if (aggkey == EN_AGG_SRCIP4)
-            ipaddr = fl->src_addr.__in6_u.__u6_addr32[3];
-        else
-            ipaddr = fl->dst_addr.__in6_u.__u6_addr32[3];
+        /* Add IPv4 record to the hash table */
+        addRecordIP4(fl, aggkey, mask, hashTable4);
 
-        /* Get masked address */
-        uint32_t maskedAddr = ntohl(masks[mask]) & ntohl(ipaddr);
-
-        /* Get the hash */
-        //TODO
-
-        /* Add the record */
-        //TODO
+        /* Check the size of hash table and double it if necessary */
+        if (hashTable4->count > hashTable4->limit)
+        {
+            doubleHashTable(hashTable4, aggkey, mask);
+        }
     }
     else if (aggkey == EN_AGG_SRCIP6 || aggkey == EN_AGG_DSTIP6)
     {
@@ -147,7 +134,14 @@ void addRecordIP(struct flow *fl, int aggkey, int mask, struct t_hashTable *hash
             return;
         }
 
-        //TODO
+        /* Add IPv6 record to the hash table */
+        addRecordIP6(fl, aggkey, mask, hashTable6);
+
+        /* Check the size of hash table and double it if necessary */
+        if (hashTable6->count > hashTable6->limit)
+        {
+            doubleHashTable(hashTable6, aggkey, mask);
+        }
     }
     else /* aggkey == EN_AGG_SRCIP || aggkey == EN_AGG_DSTIP */
     {
@@ -155,62 +149,200 @@ void addRecordIP(struct flow *fl, int aggkey, int mask, struct t_hashTable *hash
         if (fl->sa_family == SA_FAMILY_IPV6)
         {
             mask = 128;
+            if (aggkey == EN_AGG_SRCIP)
+                aggkey = EN_AGG_SRCIP6;
+            else
+                aggkey = EN_AGG_DSTIP6;
+
+            /* Add IPv6 record to the hash table */
+            addRecordIP6(fl, aggkey, mask, hashTable6);
+
+            /* Check the size of hash table and double it if necessary */
+            if (hashTable6->count > hashTable6->limit)
+            {
+                doubleHashTable(hashTable6, aggkey, mask);
+            }
         }
         else /* fl->sa_family == SA_FAMILY_IPV4 */
         {
             mask = 32;
+            if (aggkey == EN_AGG_SRCIP)
+                aggkey = EN_AGG_SRCIP4;
+            else
+                aggkey = EN_AGG_DSTIP4;
+
+            /* Add IPv4 record to the hash table */
+            addRecordIP4(fl, aggkey, mask, hashTable4);
+
+            /* Check the size of hash table and double it if necessary */
+            if (hashTable4->count > hashTable4->limit)
+            {
+                doubleHashTable(hashTable4, aggkey, mask);
+            }
         }
-
-        //TODO
     }
+}
 
-    return;
+void addRecordIP6(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable)
+{
+    return; //DBG//////////////////////////////////////////////////////
+    /* Get correct address */
+    struct in6_addr ipaddr;
+    if (aggkey == EN_AGG_SRCIP6)
+        ipaddr = fl->src_addr;
+    else
+        ipaddr = fl->dst_addr;
+
+    /* Get masked address */
+    struct in6_addr maskedAddr; // = masks6[mask] & ntoh128(ipaddr);
+
+    /* Get the hash */
+    uint32_t hash = hashFunction6(maskedAddr, hashTable->size);
+
+    /* Add the record */
+    if (hashTable->data[hash].used)
+    {
+        if (equals_in6_addr(&(hashTable->data[hash].addr6), &maskedAddr))
+        {
+            hashTable->data[hash].bytes += ntohl(fl->bytes);
+            hashTable->data[hash].packets += ntohl(fl->packets);
+        }
+        else
+        {
+            uint32_t newHash = (hash + EN_HASH_STEP) % hashTable->size;
+
+            while (hashTable->data[newHash].used && !equals_in6_addr(&(hashTable->data[newHash].addr6), &maskedAddr))
+            {
+                newHash = (newHash + EN_HASH_STEP) % hashTable->size;
+            }
+
+            if (!hashTable->data[newHash].used)
+            {
+                hashTable->data[newHash].addr6 = maskedAddr;
+                hashTable->data[newHash].bytes = ntohl(fl->bytes);
+                hashTable->data[newHash].packets = ntohl(fl->packets);
+                hashTable->data[newHash].used = 1;
+                hashTable->count++;
+            }
+            else
+            {
+                hashTable->data[newHash].bytes += ntohl(fl->bytes);
+                hashTable->data[newHash].packets += ntohl(fl->packets);
+            }
+        }
+    }
+        /* Initialize if there is not a record yet */
+    else
+    {
+        hashTable->data[hash].addr6 = maskedAddr;
+        hashTable->data[hash].bytes = fl->bytes;
+        hashTable->data[hash].packets = fl->packets;
+        hashTable->data[hash].used = 1;
+        hashTable->count++;
+    }
+}
+
+void addRecordIP4(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable)
+{
+    /* Get correct address */
+    uint32_t ipaddr;
+    if (aggkey == EN_AGG_SRCIP4)
+        ipaddr = fl->src_addr.__in6_u.__u6_addr32[3];
+    else
+        ipaddr = fl->dst_addr.__in6_u.__u6_addr32[3];
+
+    /* Get masked address */
+    uint32_t maskedAddr = ntohl(masks[mask] & ipaddr);
+
+    /* Get the hash */
+    uint32_t hash = hashFunction(maskedAddr, hashTable->size);
+
+    /* Add the record */
+    if (hashTable->data[hash].used)
+    {
+        if (hashTable->data[hash].addr4 == maskedAddr)
+        {
+            hashTable->data[hash].bytes += __builtin_bswap64(fl->bytes);
+            hashTable->data[hash].packets += __builtin_bswap64(fl->packets);
+        }
+        else
+        {
+            uint32_t newHash = (uint32_t) (hash + EN_HASH_STEP) % hashTable->size;
+
+            while (hashTable->data[newHash].used && hashTable->data[newHash].addr4 != maskedAddr)
+            {
+                newHash = (newHash + EN_HASH_STEP) % hashTable->size;
+            }
+
+            if (!hashTable->data[newHash].used)
+            {
+                hashTable->data[newHash].addr4 = maskedAddr;
+                hashTable->data[newHash].bytes = __builtin_bswap64(fl->bytes);
+                hashTable->data[newHash].packets = __builtin_bswap64(fl->packets);
+                hashTable->data[newHash].used = 1;
+                hashTable->count++;
+            }
+            else
+            {
+                hashTable->data[newHash].bytes += __builtin_bswap64(fl->bytes);
+                hashTable->data[newHash].packets += __builtin_bswap64(fl->packets);
+            }
+        }
+    }
+        /* Initialize if there is not a record yet */
+    else
+    {
+        hashTable->data[hash].addr4 = maskedAddr;
+        hashTable->data[hash].bytes = __builtin_bswap64(fl->bytes);
+        hashTable->data[hash].packets = __builtin_bswap64(fl->packets);
+        hashTable->data[hash].used = 1;
+        hashTable->count++;
+    }
 }
 
 void addRecordPort(struct flow *fl, int aggkey, struct t_hashTable *hashTable)
 {
     /* Try to add a record to data structure */
-    uint16_t value;
+    uint32_t value;
     if (aggkey == EN_AGG_SRCPORT)
-        value = fl->src_port;
+        value = ntohs(fl->src_port);
     else if (aggkey == EN_AGG_DSTPORT)
-        value = fl->dst_port;
+        value = ntohs(fl->dst_port);
     else
         return;
 
     /* Get the hash */
-    unsigned int hash = hashFunction(value, hashTable->size);
+    uint32_t hash = hashFunction(value, hashTable->size);
 
     /* Add if there is a record */
     if (hashTable->data[hash].used)
     {
         if (hashTable->data[hash].port == value)
         {
-            hashTable->data[hash].bytes += fl->bytes;
-            hashTable->data[hash].packets += fl->packets;
+            hashTable->data[hash].bytes += __builtin_bswap64(fl->bytes);
+            hashTable->data[hash].packets += __builtin_bswap64(fl->packets);
         }
         else
         {
-            unsigned int newHash = (hash + EN_HASH_STEP) % hashTable->size;
+            uint32_t newHash = (hash + EN_HASH_STEP) % hashTable->size;
 
             while (hashTable->data[newHash].used && hashTable->data[newHash].port != value)
             {
                 newHash = (newHash + EN_HASH_STEP) % hashTable->size;
-                //printf("loop!");
             }
 
             if (!hashTable->data[newHash].used)
             {
                 hashTable->data[newHash].port = value;
-                hashTable->data[newHash].bytes = fl->bytes;
-                hashTable->data[newHash].packets = fl->packets;
+                hashTable->data[newHash].bytes = __builtin_bswap64(fl->bytes);
+                hashTable->data[newHash].packets = __builtin_bswap64(fl->packets);
                 hashTable->data[newHash].used = 1;
                 hashTable->count++;
             }
             else
             {
-                hashTable->data[newHash].bytes += fl->bytes;
-                hashTable->data[newHash].packets += fl->packets;
+                hashTable->data[newHash].bytes += __builtin_bswap64(fl->bytes);
+                hashTable->data[newHash].packets += __builtin_bswap64(fl->packets);
             }
         }
     }
@@ -218,54 +350,104 @@ void addRecordPort(struct flow *fl, int aggkey, struct t_hashTable *hashTable)
     else
     {
         hashTable->data[hash].port = value;
-        hashTable->data[hash].bytes = fl->bytes;
-        hashTable->data[hash].packets = fl->packets;
+        hashTable->data[hash].bytes = __builtin_bswap64(fl->bytes);
+        hashTable->data[hash].packets = __builtin_bswap64(fl->packets);
         hashTable->data[hash].used = 1;
         hashTable->count++;
     }
 
-    //printf("size: %d/%d\n", hashTable->count, hashTable->size);
-    if (hashTable->count > 0.8 * hashTable->size)
+    if (hashTable->count > hashTable->limit)
     {
-        //printf("Hash table out of resources! size: %d/%d\n", hashTable->count, hashTable->size);
-        struct t_dataStruct *oldDataStruct = hashTable->data;
-        int oldSize = hashTable->size;
-        initHashTable(hashTable, oldSize * 2);
+        doubleHashTable(hashTable, aggkey, 0);
+    }
+}
 
-        struct flow tmpFl;
+char equals_in6_addr(struct in6_addr *i1, struct in6_addr *i2)
+{
+    if (i1->__in6_u.__u6_addr32[0] == i2->__in6_u.__u6_addr32[0] &&
+        i1->__in6_u.__u6_addr32[1] == i2->__in6_u.__u6_addr32[1] &&
+        i1->__in6_u.__u6_addr32[2] == i2->__in6_u.__u6_addr32[2] &&
+        i1->__in6_u.__u6_addr32[3] == i2->__in6_u.__u6_addr32[3])
+        return 1;
+    return 0;
+}
 
-        int i;
-        for (i = 0; i < oldSize; i++)
+void doubleHashTable(struct t_hashTable *hashTable, int aggkey, int mask)
+{
+    printf("Hash table out of resources! size: %d/%d\n", hashTable->count, hashTable->size);
+    struct t_dataStruct *oldDataStruct = hashTable->data;
+    uint32_t oldSize = hashTable->size;
+    initHashTable(hashTable, oldSize * 2);
+
+    struct flow tmpFl;
+
+    uint32_t i;
+    for (i = 0; i < oldSize; i++)
+    {
+        if (oldDataStruct[i].used)
         {
-            if (oldDataStruct[i].used)
+            tmpFl.bytes = oldDataStruct[i].bytes;
+            tmpFl.packets = oldDataStruct[i].packets;
+            if (aggkey == EN_AGG_SRCIP4)
             {
-                tmpFl.bytes = oldDataStruct[i].bytes;
-                tmpFl.packets = oldDataStruct[i].packets;
-                if (aggkey == EN_AGG_SRCPORT)
-                    tmpFl.src_port = oldDataStruct[i].port;
-                else
-                    tmpFl.dst_port = oldDataStruct[i].port;
-
+                tmpFl.src_addr.__in6_u.__u6_addr32[3] = htonl(oldDataStruct[i].addr4);
+                addRecordIP4(&tmpFl, aggkey, mask, hashTable);
+            }
+            else if (aggkey == EN_AGG_DSTIP4)
+            {
+                tmpFl.dst_addr.__in6_u.__u6_addr32[3] = htonl(oldDataStruct[i].addr4);
+                addRecordIP4(&tmpFl, aggkey, mask, hashTable);
+            }
+            else if (aggkey == EN_AGG_SRCIP6)
+            {
+                tmpFl.src_addr = oldDataStruct[i].addr6;
+                addRecordIP6(&tmpFl, aggkey, mask, hashTable);
+            }
+            else if (aggkey == EN_AGG_DSTIP6)
+            {
+                tmpFl.dst_addr = oldDataStruct[i].addr6;
+                addRecordIP6(&tmpFl, aggkey, mask, hashTable);
+            }
+            else if (aggkey == EN_AGG_SRCPORT)
+            {
+                tmpFl.src_port = oldDataStruct[i].port;
                 addRecordPort(&tmpFl, aggkey, hashTable);
             }
+            else if (aggkey == EN_AGG_DSTPORT)
+            {
+                tmpFl.dst_port = oldDataStruct[i].port;
+                addRecordPort(&tmpFl, aggkey, hashTable);
+            }
+            else
+                break;
         }
-        free(oldDataStruct);
     }
-    return;
+    free(oldDataStruct);
 }
 
-inline unsigned int hashFunction(const unsigned int input, unsigned tableSize)
+inline uint32_t hashFunction(const uint32_t input, uint32_t tableSize)
 {
-    return ((input * 2654435761) % tableSize);
+    return ((uint32_t) (input * 2654435761) % tableSize);
 }
 
-void initHashTable(struct t_hashTable *hashTable, unsigned int tableSize)
+
+inline uint32_t hashFunction6(const struct in6_addr input, uint32_t tableSize)
+{
+    return ((input.__in6_u.__u6_addr32[0] *
+             input.__in6_u.__u6_addr32[1] *
+             input.__in6_u.__u6_addr32[2] *
+             input.__in6_u.__u6_addr32[3] *
+             2654435761) % tableSize);
+}
+
+void initHashTable(struct t_hashTable *hashTable, uint32_t tableSize)
 {
     hashTable->data = malloc(sizeof (struct t_dataStruct) * tableSize);
     hashTable->size = tableSize;
     hashTable->count = 0;
+    hashTable->limit = 0.8 * tableSize;
 
-    int i;
+    uint32_t i;
     for (i = 0; i < tableSize; i++)
     {
         hashTable->data[i].used = 0;
@@ -274,9 +456,23 @@ void initHashTable(struct t_hashTable *hashTable, unsigned int tableSize)
 
 void finishHashTable(struct t_hashTable *hashTable)
 {
-    free(hashTable->data);
-    free(hashTable);
+    if (hashTable != NULL)
+    {
+        free(hashTable->data);
+        free(hashTable);
+    }
 }
+
+struct in6_addr ntoh128(struct in6_addr n)
+{
+    struct in6_addr h;
+    h.__in6_u.__u6_addr32[0] = ntohl(n.__in6_u.__u6_addr32[0]);
+    h.__in6_u.__u6_addr32[1] = ntohl(n.__in6_u.__u6_addr32[1]);
+    h.__in6_u.__u6_addr32[2] = ntohl(n.__in6_u.__u6_addr32[2]);
+    h.__in6_u.__u6_addr32[3] = ntohl(n.__in6_u.__u6_addr32[3]);
+    return h;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -285,6 +481,7 @@ int main(int argc, char *argv[])
     int aggkey;
     int mask = 0;
     struct t_hashTable *hashTable = malloc(sizeof (struct t_hashTable));
+    struct t_hashTable *hashTable6 = NULL;
 
     if (argc == 2 && (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0))
     {
@@ -322,7 +519,7 @@ int main(int argc, char *argv[])
     }
 
     // DBG ////////////////////////////////////////////////
-    unsigned int a = 0;
+    //unsigned int a = 0;
     // ENDDBG /////////////////////////////////////////////
 
     DIR *dir;
@@ -341,13 +538,14 @@ int main(int argc, char *argv[])
         {
             /* Initialize hash function for IP based data structure */
             initHashTable(hashTable, EN_HASH_INIT_IP);
+            hashTable6 = malloc(sizeof (struct t_hashTable));
+            initHashTable(hashTable6, EN_HASH_INIT_IP);
         }
         else
         {
             /* Initialize hash function for port based data structure */
             initHashTable(hashTable, EN_HASH_INIT_PORT);
         }
-
 
         while ((ent = readdir(dir)) != NULL)
         {
@@ -362,7 +560,7 @@ int main(int argc, char *argv[])
             strcat(file, ent->d_name);
 
             // DBG //////////////////////////////////////////////
-            fprintf(stdout, "%s: ", file);
+            fprintf(stdout, "%s\n", file);
             // ENDDBG ///////////////////////////////////////////
 
             /* Start to parse file by chosen aggregation */
@@ -379,31 +577,20 @@ int main(int argc, char *argv[])
             {
                 while ((n = fread(&fl, sizeof (struct flow), 1, fp)) != 0)
                 {
-                    // DBG ////////////////////////////////
-                    if (a > 22)
-                        break;
-                    a++;
-                    // ENDDBG /////////////////////////////
-                    addRecordIP(&fl, aggkey, mask, hashTable);
+                    addRecordIP(&fl, aggkey, mask, hashTable, hashTable6);
                 }
             }
             else
             {
                 while ((n = fread(&fl, sizeof (struct flow), 1, fp)) != 0)
                 {
-                    // DBG ////////////////////////////////
-                    if (a > 22)
-                        break;
-                    a++;
-                    // ENDDBG /////////////////////////////
                     addRecordPort(&fl, aggkey, hashTable);
-                    //print_flow(&fl);
                 }
             }
 
             // DBG ////////////////////////////////
-            fprintf(stdout, "%d\n", a);
-            printf("count/size: %d/%d\n", hashTable->count, hashTable->size);
+            //fprintf(stdout, "%d\n", a);
+            printf("count/size: %u/%u\n", hashTable->count, hashTable->size);
             // ENDDBG /////////////////////////////
 
             /* Close the file */
@@ -427,17 +614,7 @@ int main(int argc, char *argv[])
     /* Print the sorted internal structure */
     /* TODO */
 
-
-    /*
-        FILE *fp = fopen(directory, "rb");
-        struct flow fl;
-        size_t n = 0;
-        while ((n = fread(&fl, sizeof (struct flow), 1, fp)) != 0) {
-            print_flow(&fl);
-            break;
-        }
-        fclose(fp);
-     */
     finishHashTable(hashTable);
+    finishHashTable(hashTable6);
     return (EXIT_SUCCESS);
 }
