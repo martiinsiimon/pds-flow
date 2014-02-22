@@ -7,8 +7,11 @@
 #ifndef MAIN_H
 #define	MAIN_H
 
+
+#include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
+
 
 struct flow
 {
@@ -28,11 +31,22 @@ struct t_dataStruct
         uint16_t port; //in order
         uint32_t addr4; //in order
         struct in6_addr addr6; //uint32_t[4]
-    };
+    } _union_dataStruct;
+#define port _union_dataStruct.port
+#define addr4 _union_dataStruct.addr4
+#define addr6 _union_dataStruct.addr6
+
     uint64_t packets;
     uint64_t bytes;
     char used;
 };
+
+struct t_sortStruct
+{
+    uint32_t key;
+    uint64_t value;
+};
+
 
 struct t_hashTable
 {
@@ -108,8 +122,15 @@ static uint32_t masks[] = {
 void print_flow(struct flow *fl);
 void printHelp(char *name);
 void printError(char *msg);
+void printIpv6(struct t_dataStruct *d);
+void printIpv4(struct t_dataStruct *d);
+void printPort(struct t_dataStruct *d);
+
 char equals_in6_addr(struct in6_addr *i1, struct in6_addr *i2);
 struct in6_addr ntoh128(struct in6_addr n);
+struct in6_addr maskIPv6(struct in6_addr* addr, int mask);
+int compareSortStruct(const void * a, const void * b);
+int sortHashArray(struct t_sortStruct *hashArray, struct t_hashTable *hashTable, int sortkey);
 
 int parseSortKey(char *key);
 int parseAggKey(char *key, int * mask);
@@ -118,8 +139,8 @@ void addRecordIP4(struct flow *fl, int aggkey, int mask, struct t_hashTable *has
 void addRecordIP6(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable);
 void addRecordPort(struct flow *fl, int aggkey, struct t_hashTable *hashTable);
 
-inline uint32_t hashFunction(const uint32_t input, uint32_t tableSize);
-inline uint32_t hashFunction6(const struct in6_addr input, uint32_t tableSize);
+uint32_t hashFunction(const uint32_t input, uint32_t tableSize);
+uint32_t hashFunction6(const struct in6_addr input, uint32_t tableSize);
 void initHashTable(struct t_hashTable *hashTable, uint32_t tableSize);
 void doubleHashTable(struct t_hashTable *hashTable, int aggkey, int mask);
 void finishHashTable(struct t_hashTable *hashTable);
