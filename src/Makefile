@@ -1,6 +1,6 @@
 FILES=main.c
 OBJ=${FILES:.c=.o}
-FLAGS=-Wall -W -Werror -ansi -Wshadow -g -O0 -pipe -pedantic
+FLAGS=-Wall -W -Werror -std=c99 -g -O0 -pipe -pedantic -D_GNU_SOURCE
 
 BIN=../bin/
 EXE=$(BIN)flow
@@ -23,10 +23,10 @@ run:
 clean:
 	$(RM) *.o
 
-%: %.c
-	$(CC) -o $@ $^ $(FLAGS)
-
-#zavislosti
-main.o: main.c main.h
+.c.o:
+	$(CC) $(FLAGS) $< -c -o $@
 
 $(EXE): $(FILES) $(DEPS)
+
+#deps
+main.o: main.h main.c
