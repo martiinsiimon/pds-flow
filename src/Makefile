@@ -1,6 +1,6 @@
 FILES=main.c
 OBJ=${FILES:.c=.o}
-FLAGS=-Wall -W -Werror -std=c99 -g -O0 -pipe -pedantic -D_GNU_SOURCE
+FLAGS=-Wall -W -Werror -Wshadow -std=c99 -g -pipe -O3 -pedantic -D_GNU_SOURCE
 
 BIN=../bin/
 EXE=$(BIN)flow
