@@ -76,6 +76,12 @@ struct t_hashTable
 #define EN_HASH_INIT_PORT 16384
 #define EN_HASH_STEP 13
 
+/* Data types */
+#define EN_DATA_UNUSED 0
+#define EN_DATA_PORT 2
+#define EN_DATA_IP4 4
+#define EN_DATA_IP6 6
+
 #define SA_FAMILY_IPV6 167772160
 #define SA_FAMILY_IPV4 33554432
 #define IPV4_FULL_MASK 4294967295 //address 255.255.255.255
@@ -122,19 +128,17 @@ static uint32_t masks[] = {
 void print_flow(struct flow *fl);
 void printHelp(char *name);
 void printError(char *msg);
-void printIpv6(struct t_dataStruct *d);
-void printIpv4(struct t_dataStruct *d);
-void printPort(struct t_dataStruct *d);
+void printData(struct t_dataStruct *d);
+int processDirectory(char *directory, struct t_hashTable *hashTable, int aggkey, int mask);
 
 char equals_in6_addr(struct in6_addr *i1, struct in6_addr *i2);
-struct in6_addr ntoh128(struct in6_addr n);
 struct in6_addr maskIPv6(struct in6_addr* addr, int mask);
 int compareSortStruct(const void * a, const void * b);
 int sortHashArray(struct t_sortStruct *hashArray, struct t_hashTable *hashTable, int sortkey);
 
 int parseSortKey(char *key);
 int parseAggKey(char *key, int * mask);
-void addRecordIP(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable4, struct t_hashTable *hashTable6);
+void addRecordIP(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable4);
 void addRecordIP4(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable);
 void addRecordIP6(struct flow *fl, int aggkey, int mask, struct t_hashTable *hashTable);
 void addRecordPort(struct flow *fl, int aggkey, struct t_hashTable *hashTable);
@@ -142,6 +146,6 @@ void addRecordPort(struct flow *fl, int aggkey, struct t_hashTable *hashTable);
 uint32_t hashFunction(const uint32_t input, uint32_t tableSize);
 uint32_t hashFunction6(const struct in6_addr input, uint32_t tableSize);
 void initHashTable(struct t_hashTable *hashTable, uint32_t tableSize);
-void doubleHashTable(struct t_hashTable *hashTable, int aggkey, int mask);
+void doubleHashTable(struct t_hashTable *hashTable, int aggkey);
 void finishHashTable(struct t_hashTable *hashTable);
 #endif /* MAIN_H */
